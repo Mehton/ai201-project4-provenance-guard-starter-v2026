@@ -59,8 +59,16 @@ MAX_TEXT_CHARS = 10_000
 # down BEFORE you code it, and to put the numbers in your README. Whatever you
 # decide, it goes here.
 
+#
+# My choice: 50/50. Each signal was wrong about a different kind of human
+# writing in my calibration run, so neither gets to outvote the other.
+
 WEIGHT_MODEL_SIGNAL = 0.5
 WEIGHT_STYLE_SIGNAL = 0.5
+
+# The AI label needs BOTH signals at or above this. If either is below it, the
+# combined score is capped just under AI_THRESHOLD — "unsure" at worst.
+AGREEMENT_FLOOR = 0.5
 
 
 # ─── Thresholds (Milestone 5) ────────────────────────────────────────────────

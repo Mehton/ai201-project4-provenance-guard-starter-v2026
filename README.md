@@ -42,8 +42,8 @@
 1. A writer sends text and creator_id as JSON to POST /submit.
 2. The route checks that the JSON and fields are valid and that the text is no longer than 10,000 characters.
 3. `detector.py` measures how predictable the text is to a local language model and returns model_score.
-4. `stylometry.py` measures sentence-length variation, vocabulary variety, and punctuation per word, returning style_score.
-5. `scoring.py::combine_signals` combines them: 60% model score and 40% style score.
+4. `stylometry.py` measures sentence-length variation, vocabulary variety, and punctuation per word, and turns them into style_score. Vocabulary variety is measured and logged but not scored.
+5. `scoring.py::combine_signals` combines them 50/50. It only allows an AI score when both signals lean AI.
 6. `scoring.py::score_to_label` maps the combined score to human (≤0.35), unsure (>0.35 and <0.65), or AI (≥0.65).
 7. The service logs the decision and returns the scores, label, confidence, and content_id. The writer can use that ID to appeal.
 
@@ -67,42 +67,65 @@
 
 ### Signal two — the style signal
 
-**What it measures:** The shape of the text, not its meaning. It combines three measures, each turned into "higher = more AI-like":
+**What it measures:** The shape of the text, not its meaning. `stylometry.py::style_signal` computes three measures, maps each onto 0–1 "AI likeness" with a straight line between two anchor values, and takes a weighted average:
 
-- **Sentence-length spread:** the standard deviation of sentence lengths divided by the mean. Low spread is AI-like.
-- **Vocabulary variety (type-token ratio):** unique words over total words. Low variety is AI-like.
-- **Punctuation density:** commas, semicolons, colons, dashes, parentheses, `!` and `?` per word. Little punctuation beyond the full stop is AI-like.
+| Measure                | How it's computed                                                            | 1.0 (AI) at | 0.0 (human) at | Weight |
+| ---------------------- | ---------------------------------------------------------------------------- | ----------- | -------------- | ------ |
+| Sentence-length spread | standard deviation of sentence lengths ÷ mean                                | ≤ 0.20      | ≥ 0.60         | 0.75   |
+| Punctuation density    | every mark except the full stop, per word                                    | ≤ 0.03      | ≥ 0.09         | 0.25   |
+| Vocabulary variety     | moving-average type-token ratio (40-word windows, so length doesn't skew it) | —           | —              | **0**  |
+
+I read the anchor values off my calibration texts. Vocabulary variety gets no weight because it pointed the _wrong way_: the AI texts had the most varied vocabulary (0.82–0.90) and my own plain paragraph had the least (0.66). Scoring "low variety = AI" would have accused the writer from my false-positive trace. It's still logged, under `style_parts`. A submission with fewer than two sentences gets a neutral 0.5 for spread, because "no spread to measure" isn't evidence of AI.
 
 **Why that might differ between human and AI writing:** Models tend to produce even, medium-length sentences, safe repeated phrasing and tidy punctuation. People mix very short sentences with long ones, and they reach for dashes, asides and questions.
 
-**What it can't see:** Meaning. It can't tell carefully edited human prose, a list, or a short answer from machine output, so even, plainly punctuated human writing looks AI-like here too. That's the same writer signal one already over-accuses. It is also easy to fool on purpose: chopping a few sentences short or adding a dash and a question mark moves the score without changing a word of the content. Type-token ratio falls as text gets longer, so length alone can look like a signal. Very short submissions (one or two sentences) give it almost nothing to measure.
+**What it can't see:** Meaning. It can't tell carefully edited human prose, a list, or a short answer from machine output, so even, plainly punctuated human writing looks AI-like here too. That's the same writer signal one already over-accuses. It is also easy to fool on purpose: chopping a few sentences short or adding a dash and a question mark moves the score without changing a word of the content. Type-token ratio falls as text gets longer, so length alone can look like a signal. Very short submissions (one or two sentences) give it almost nothing to measure. It also depends entirely on where it thinks sentences end: footnote markers like `sixteen.1 She` hide sentence breaks, and removing two of them moved my factual-bio test from style 0.19 to 0.75.
 
 ### Tracing the false positive
 
 A second-language writer submits a 250-word essay they wrote themselves. They use words they're sure of, medium-length sentences, and mostly full stops.
 
-1. **Model signal ≈ 0.80.** Common words in ordinary sentences give low perplexity, which is signal one's blind spot.
-2. **Style signal ≈ 0.60.** Even sentence lengths, repeated vocabulary and little punctuation lean AI-like. That's the *same* blind spot, so the two signals agree for the same wrong reason.
+1. **Model signal = 0.80.** Common words in ordinary sentences give low perplexity, which is signal one's blind spot.
+2. **Style signal = 0.60.** Even sentence lengths, repeated vocabulary and little punctuation lean AI-like. That's the _same_ blind spot, so the two signals agree for the same wrong reason.
 3. **Combined (planned 60/40):** 0.6 × 0.80 + 0.4 × 0.60 = **0.72**, which is past the 0.65 AI line. The writer gets the **high-confidence AI** label.
 4. **What they can do:** send the `content_id` from the response to `POST /appeal` with their reasoning. The item moves to `under_review` and the appeal is logged. Nothing is re-scored automatically.
 
 What this means for the build: with these numbers, a plain writer gets accused unless style pulls hard the other way. I'll check this with a plainly written human paragraph in Milestone 4. If it lands above the AI line, I'll raise the AI threshold or lower the model weight. The AI label also has to say how to appeal, because for this writer the appeal is the only way back.
+
+**What happened in Milestone 4:** my own plain paragraph scored model 0.52 and style 0.63. That's AI-leaning on style, as predicted, because it has no punctuation at all. Under the original 60/40 plan it would have combined to 0.57; under my final rule it's 0.58, which is **unsure**, not AI. Formal, factual human writing turned out to be the bigger risk. The model scored my Joan Armatrading bio 0.59, and with its footnote markers removed both signals leaned AI (see the table below). That's why I moved to 50/50 and added the agreement rule below, instead of only raising the threshold.
 
 ### The combining rule
 
 <!-- Write the rule in words, then give the numbers. What happens when the two
      signals disagree? -->
 
-**The rule:**
+**The rule:** Average the two signals with equal weight. Then apply an agreement rule to the AI label only: if _either_ signal is below 0.5 (it leans human), the combined score is capped just under the AI threshold. So one signal on its own can make a piece "unsure", but it can never get it called AI. The cap is one-sided on purpose. A wrong accusation is the expensive mistake, and a missed detection is the cheap one.
 
-**The numbers:**
+**The numbers:** `WEIGHT_MODEL_SIGNAL = 0.5`, `WEIGHT_STYLE_SIGNAL = 0.5`, and `AGREEMENT_FLOOR = 0.5` (the cap is `AI_THRESHOLD − 0.01` = 0.64). All are in `config.py`.
+
+Why 50/50 and not my planned 60/40: on my calibration texts each signal was wrong about a _different_ human. The model leaned AI on my factual bio (0.59) while the style signal called it human (0.19). On my plain paragraph it was the other way round: style leaned AI (0.63) while the model sat near the middle (0.52). Neither earned more weight than the other.
 
 **Where it lives:** `scoring.py::combine_signals`
 
 <!-- ⚠️ The grader checks your code against that line. If your rule lives
      somewhere else, say where. -->
 
-**A case where my two signals split, and what my rule does with it:**
+**My calibration run** (real `/submit` responses; thresholds 0.35 / 0.65):
+
+| Input                                                                                     | model_score | style_score | combined | Lands in |
+| ----------------------------------------------------------------------------------------- | ----------- | ----------- | -------- | -------- |
+| Clearly AI (generic paragraph about AI)                                                   | 0.9104      | 0.8375      | 0.8740   | AI       |
+| Clearly human (my own casual message about college, typos and all)                        | 0.2861      | 0.5003      | 0.3932   | unsure   |
+| **Formal human** (a factual bio of Joan Armatrading, report style, with footnote markers) | 0.5914      | 0.1910      | 0.3912   | unsure   |
+| **Lightly edited AI** (the AI paragraph, reworded by hand)                                | 0.6473      | 0.6691      | 0.6582   | AI       |
+| Plain human (my own college paragraph)                                                    | 0.5238      | 0.6327      | 0.5783   | unsure   |
+| _The same bio, footnote markers removed_                                                  | 0.6204      | 0.7532      | 0.6868   | **AI ✗** |
+
+**My "clearly human" text only reached unsure.** The model read it as human (0.29), but it's 29 words in three sentences with no punctuation inside them, so style sat at the middle (0.50). The combined 0.39 is just over the 0.35 human line. In this run, none of my human texts reached the human label. That matters for criterion 3, and I'll come back to it when I set thresholds in Milestone 5.
+
+**The last row is a false positive.** The bio's footnote markers have no space after the full stop (`sixteen.1 She`), so the sentence splitter merged two pairs of sentences. That made the lengths look uneven, which reads as human. With the markers removed, the sentences are correctly split and all similar in length. Style jumps from 0.19 to 0.75, both signals are now above 0.5, the agreement rule doesn't apply, and a human-written factual bio gets labelled AI. Nothing about who wrote it changed, only the formatting. I'm keeping this case for Milestone 5's thresholds and for unit 8.
+
+**A case where my two signals split, and what my rule does with it:** My Joan Armatrading bio, as written. The model leans AI (0.59), because factual sentences like "She received an … Award … in 1996" are fairly predictable to GPT-2. The style signal says human (0.19), because its sentences, as the splitter sees them, swing from 11 words to 46. The average is 0.39, which is "unsure", and the agreement rule guarantees it stays below 0.65 however the numbers move, because style is under 0.5. That's the behaviour I want: two methods disagreeing _is_ uncertainty, and a real writer shouldn't be accused on one method's word.
 
 ---
 

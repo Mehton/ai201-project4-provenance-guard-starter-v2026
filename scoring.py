@@ -51,12 +51,26 @@ def combine_signals(model_score: float, style_score: float) -> float:
 
     The weights in config.py are placeholders. Change them, or ignore them and
     write a different rule.
+
+    My rule, in two steps:
+
+      1. A weighted average, 50/50. On my calibration texts each signal was
+         wrong about a different human: the model leaned AI on my factual
+         bio, the style signal leaned AI on my plain paragraph. Neither
+         earned more weight than the other.
+      2. An agreement rule for the AI label only. If either signal is below
+         AGREEMENT_FLOOR (it leans human), the combined score is capped just
+         under AI_THRESHOLD. One signal on its own can make a piece "unsure",
+         never "AI". The cap is one-sided on purpose: a wrong accusation is
+         the expensive mistake, a missed detection is not.
     """
-    # TODO: replace this
-    return (
+    combined = (
         config.WEIGHT_MODEL_SIGNAL * model_score
         + config.WEIGHT_STYLE_SIGNAL * style_score
     )
+    if min(model_score, style_score) < config.AGREEMENT_FLOOR:
+        combined = min(combined, config.AI_THRESHOLD - 0.01)
+    return round(min(max(combined, 0.0), 1.0), 4)
 
 
 def score_to_label(score: float) -> tuple[str, str]:

@@ -31,6 +31,8 @@ from flask import Flask, jsonify, request
 import audit
 import config
 import detector
+import scoring
+import stylometry
 
 app = Flask(__name__)
 
@@ -231,9 +233,10 @@ def submit():
         return _reject(creator_id, "detector_unavailable",
                        "The detector model isn't available right now.", status=503)
 
-    # Placeholders until Milestone 4 (style signal, combining) and 5 (labels).
-    style_score = None
-    confidence = model_score
+    style_score = stylometry.style_signal(text)
+    confidence = scoring.combine_signals(model_score, style_score)
+
+    # Placeholders until Milestone 5 (labels).
     guess = "pending"
     label = "PLACEHOLDER — the label comes in Milestone 5."
 
@@ -246,6 +249,9 @@ def submit():
         style_score=style_score,
         combined_score=confidence,
         label=label,
+        # Each style measure as 0–1 AI-likeness, so a surprising style_score
+        # can be traced to the measure that caused it.
+        style_parts=stylometry.style_parts(text),
     )
 
     return jsonify({
