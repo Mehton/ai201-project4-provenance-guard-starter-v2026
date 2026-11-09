@@ -1,0 +1,12 @@
+{"timestamp": "2026-11-05T02:12:17+00:00", "content_id": "f6abc94a-c4e1-474c-9282-cb3f9654c3ae", "creator_id": "bhupinder", "guess": "pending", "model_score": 0.9173, "style_score": null, "combined_score": 0.9173, "label": "PLACEHOLDER — the label comes in Milestone 5.", "status": "decided"}
+{"timestamp": "2026-11-05T02:12:17+00:00", "creator_id": "t", "event": "rejected", "status": "rejected", "reason": "missing_text"}
+{"timestamp": "2026-11-05T02:12:17+00:00", "creator_id": "t", "event": "rejected", "status": "rejected", "reason": "invalid_text"}
+{"timestamp": "2026-11-05T02:12:17+00:00", "creator_id": "t", "event": "rejected", "status": "rejected", "reason": "empty_text"}
+{"timestamp": "2026-11-05T02:12:18+00:00", "creator_id": "t", "event": "rejected", "status": "rejected", "reason": "empty_text"}
+{"timestamp": "2026-11-05T02:12:18+00:00", "creator_id": "t", "event": "rejected", "status": "rejected", "reason": "text_too_short"}
+{"timestamp": "2026-11-05T02:12:18+00:00", "creator_id": "unknown", "event": "rejected", "status": "rejected", "reason": "missing_creator_id"}
+{"timestamp": "2026-11-05T02:12:18+00:00", "creator_id": "unknown", "event": "rejected", "status": "rejected", "reason": "invalid_json"}
+{"timestamp": "2026-11-05T02:12:19+00:00", "creator_id": "unknown", "event": "rejected", "status": "rejected", "reason": "invalid_json"}
+{"timestamp": "2026-11-05T02:12:19+00:00", "creator_id": "t", "event": "rejected", "status": "rejected", "reason": "text_too_long", "length": 14999}
+{"timestamp": "2026-11-05T02:12:32+00:00", "content_id": "339e6a68-aeb8-4180-a831-ecf00addb467", "creator_id": "bhupinder", "guess": "pending", "model_score": 0.9173, "style_score": null, "combined_score": 0.9173, "label": "PLACEHOLDER — the label comes in Milestone 5.", "status": "decided"}
+{"timestamp": "2026-11-09T00:24:18+00:00", "content_id": "535e200f-6b64-46a3-a413-da6bc1024c78", "creator_id": "bhupinder", "guess": "pending", "model_score": 0.5238, "style_score": null, "combined_score": 0.5238, "label": "PLACEHOLDER — the label comes in Milestone 5.", "status": "decided"}

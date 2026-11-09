@@ -47,7 +47,12 @@ DETECTOR_MODEL = os.getenv("AI201_DETECTOR_MODEL", "gpt2")
 DETECTOR_MAX_TOKENS = 400
 
 
-# ─── Scoring (Milestone 4) ───────────────────────────────────────────────────
+# Anything longer is rejected with a 400 before the model sees it. Criterion 5
+# needs "enormous" to be a number, and this is it.
+MAX_TEXT_CHARS = 10_000
+
+
+# ─── Scoring (Milestone 4)───────────────────────────────────────────────────
 # How much each signal counts toward the combined score.
 #
 # ⚠️ These are placeholders. Milestone 4 asks you to write your combining rule
@@ -92,7 +97,7 @@ AI_THRESHOLD = 0.65
 # an hour, and a script sending a thousand variations to map your thresholds.
 # Your README has to say why your numbers and not others.
 
-RATE_LIMITING_ENABLED = os.getenv("AI201_RATE_LIMITS", "0") == "1"
+RATE_LIMITING_ENABLED = os.getenv("AI201_RATE_LIMITS", "0") == "1" #True
 
 RATE_LIMIT_PER_MINUTE = 10
 RATE_LIMIT_PER_DAY = 200

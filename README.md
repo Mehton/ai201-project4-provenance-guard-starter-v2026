@@ -139,14 +139,39 @@ What this means for the build: with these numbers, a plain writer gets accused u
      two off the response, so leaving them out costs you next unit's
      diagnostics. -->
 
-```bash
-$ curl -X POST http://127.0.0.1:5000/submit \
-  -H "Content-Type: application/json" \
-  -d '{"text": "...", "creator_id": "..."}'
+<!-- Milestone 3 run: one signal only. style_score, guess and label are
+     placeholders until Milestones 4 and 5; I'll re-run this then. -->
+
+```powershell
+PS> curl.exe -X POST http://127.0.0.1:5000/submit -H "Content-Type: application/json" -d '{\"text\": \"When I was goping to college in my hometown. I used to study every day in the library. I miss the pizza place in the collage where I used to eat pizza with my friends.\", \"creator_id\": \"bhupinder\"}'
 ```
 
 ```json
+{
+  "confidence": 0.5238,
+  "content_id": "535e200f-6b64-46a3-a413-da6bc1024c78",
+  "creator_id": "bhupinder",
+  "guess": "pending",
+  "label": "PLACEHOLDER — the label comes in Milestone 5.",
+  "model_score": 0.5238,
+  "status": "decided",
+  "style_score": null
+}
+```
 
+**A rejected submission** (empty text)
+
+```bash
+$ curl -X POST http://127.0.0.1:5000/submit \
+  -H "Content-Type: application/json" \
+  -d '{"text": "   ", "creator_id": "t"}'
+```
+
+```json
+{
+  "error": "empty_text",
+  "message": "text is empty."
+}
 ```
 
 **An appeal**
@@ -163,12 +188,27 @@ $ curl -X POST http://127.0.0.1:5000/appeal \
 
 **What the log shows afterwards**
 
-```bash
-$ curl "http://127.0.0.1:5000/log?limit=3"
+```powershell
+PS> curl.exe "http://127.0.0.1:5000/log?limit=1"
 ```
 
 ```json
-
+{
+  "count": 1,
+  "entries": [
+    {
+      "combined_score": 0.5238,
+      "content_id": "535e200f-6b64-46a3-a413-da6bc1024c78",
+      "creator_id": "bhupinder",
+      "guess": "pending",
+      "label": "PLACEHOLDER — the label comes in Milestone 5.",
+      "model_score": 0.5238,
+      "status": "decided",
+      "style_score": null,
+      "timestamp": "2026-11-09T00:24:18+00:00"
+    }
+  ]
+}
 ```
 
 ---
