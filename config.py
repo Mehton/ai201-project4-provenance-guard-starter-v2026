@@ -75,17 +75,23 @@ AGREEMENT_FLOOR = 0.5
 # Where one label becomes another. Scores run 0.0 (confidently human) to 1.0
 # (confidently AI).
 #
-#   score < HUMAN_THRESHOLD          -> high-confidence human
+#   score <= HUMAN_THRESHOLD         -> high-confidence human
 #   between the two                  -> unsure
-#   score > AI_THRESHOLD             -> high-confidence AI
+#   score >= AI_THRESHOLD            -> high-confidence AI
 #
 # ⚠️ This is where your false-positive decision from Milestone 1 actually gets
 # made. Widening the unsure band means fewer wrong accusations and more AI text
 # getting through. There is no setting that avoids the trade — only settings
 # that decide who pays for it.
+#
+# My choice: 0.40 / 0.70, moved from 0.35 / 0.65 after calibration. My own
+# casual writing scored 0.39, so at 0.35 none of my human texts could reach
+# "human". A human-written factual bio scored 0.69, so at 0.65 it would have
+# been called AI. The price: my lightly edited AI text (0.66) now lands in
+# "unsure" instead of AI. A missed detection is the cheaper mistake.
 
-HUMAN_THRESHOLD = 0.35
-AI_THRESHOLD = 0.65
+HUMAN_THRESHOLD = 0.40
+AI_THRESHOLD = 0.70
 
 # ⚠️ One thing that catches people out in Milestone 5. A weighted average can
 # only land between its two inputs — so while `style_signal` is still the stub

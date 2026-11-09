@@ -158,7 +158,6 @@ def health():
 def submit():
     """
     Take a piece of text, decide about it, log the decision, answer.
-    ← TODO — Milestones 3, 4 and 5
 
     Expects JSON:
         {"text": "...", "creator_id": "..."}
@@ -236,9 +235,7 @@ def submit():
     style_score = stylometry.style_signal(text)
     confidence = scoring.combine_signals(model_score, style_score)
 
-    # Placeholders until Milestone 5 (labels).
-    guess = "pending"
-    label = "PLACEHOLDER — the label comes in Milestone 5."
+    guess, label = scoring.score_to_label(confidence)
 
     content_id = str(uuid.uuid4())
     audit.log_decision(
@@ -275,7 +272,7 @@ def _reject(creator_id, error, message, status=400, **extra):
 @app.post("/appeal")
 def appeal():
     """
-    A writer says you got it wrong. ← TODO — Milestone 5
+    A writer says you got it wrong.
 
     Expects JSON:
         {"content_id": "...", "reasoning": "..."}
@@ -292,14 +289,47 @@ def appeal():
     to the person on the other end. It's the only thing standing between a
     wrong accusation and nothing at all.
     """
-    payload = request.get_json(silent=True) or {}
+    payload = request.get_json(silent=True)
+    if not isinstance(payload, dict):
+        return _appeal_error("invalid_json", "Send a JSON object with content_id and reasoning.")
 
-    # TODO: delete this and build the route.
+    content_id = payload.get("content_id")
+    if not isinstance(content_id, str) or not content_id.strip():
+        return _appeal_error("missing_content_id", "content_id is required.")
+    content_id = content_id.strip()
+
+    reasoning = payload.get("reasoning")
+    if not isinstance(reasoning, str) or not reasoning.strip():
+        return _appeal_error("missing_reasoning", "Tell us why you think the decision is wrong.")
+    reasoning = reasoning.strip()
+    if len(reasoning) > MAX_REASONING_CHARS:
+        return _appeal_error("reasoning_too_long",
+                             f"reasoning is longer than {MAX_REASONING_CHARS:,} characters.")
+
+    # Only a real decision can be appealed. Nothing is logged for an unknown
+    # id — criterion 4 says a made-up id must leave the log untouched.
+    decisions = [e for e in audit.entries_for(content_id) if e.get("status") == "decided"]
+    if not decisions:
+        return _appeal_error("unknown_content_id",
+                             "We couldn't find a submission with that content_id.", status=404)
+
+    # The writer doesn't resend their creator_id; it comes from the original.
+    entry = audit.log_appeal(content_id, decisions[0]["creator_id"], reasoning)
+
     return jsonify({
-        "error": "not_implemented",
-        "message": "POST /appeal isn't built yet — see the TODO in app.py.",
-        "you_sent": payload,
-    }), 501
+        "content_id": content_id,
+        "status": entry["status"],
+        "message": "Thanks. Your appeal has been recorded and a person will review this decision.",
+    })
+
+
+# Long enough to explain, short enough that nobody pastes a whole essay in here.
+MAX_REASONING_CHARS = 2_000
+
+
+def _appeal_error(error, message, status=400):
+    """A JSON error for /appeal. Not logged: a bad appeal never touches an item."""
+    return jsonify({"error": error, "message": message}), status
 
 
 # ── Already works ─────────────────────────────────────────────────────────────
