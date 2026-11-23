@@ -1067,6 +1067,28 @@ After the improvement, 14 attacks still break and criterion 3 is still missed. G
 
 I'd go further toward fewer wrong accusations: raise the AI line until careful human writing like FP03 stops landing in it, and send every AI label to a person before the writer sees it. The site and its honest writers pay for that, competing with AI text that now passes as "unsure", but the alternative puts the cost on non-native and formal writers, who are the least able to argue back.
 
+<!-- ═══════════════════════ UNIT 9 — CAPSTONE ═══════════════════════ -->
+
+---
+
+## The Shape
+
+**System:** Provenance Guard, this repo. It's the one I know best: I wrote its criteria, ran 56 attacks against it, and can name its weak points from memory.
+
+**Shape: A, deploy and instrument.** Until now Provenance Guard has only run as `python app.py`, on Flask's development server, and the only thing it records is *what* it decided, not how long that took or what it cost. I'm adding the operational layer:
+- a single documented command that starts it on a real WSGI server (`waitress`, because `gunicorn` doesn't run on Windows), tested from a clean checkout
+- a structured record for every request: timestamp, what came in, what went out, total time and time per stage (validation, signal one, signal two, combining, logging), plus process memory
+- a cost per scored request, measured from those records in seconds of compute
+
+**Run path: B, local with logs.** This system loads GPT-2 locally. `torch` plus the model needs well over the 512 MB a free host gives, before a single request arrives, and a free host would re-download the 550 MB model after every idle spin-down. I'll measure the real footprint rather than quote it.
+
+**Out of scope, decided now:**
+- **No changes to detection.** The signals, weights, thresholds and labels stay exactly as unit 8 left them. The false positives (FP02–05) and short-sentence evasions are real, but fixing them is accuracy work, not operations work.
+- **No hosting.** No Path A, and no attempt to squeeze the model into 512 MB by swapping in a smaller one. A different model would be a different detector, and every unit 7–8 result would stop applying.
+- **No new endpoints or capabilities,** not even the `GET /content/<id>` stretch from unit 7. Shape A is the whole job.
+
+**Size check:** waitress plus a start command is a few lines. The instrumentation is one timing wrapper around stages that already exist in `app.py::submit`, plus extra fields on log entries that `audit.py` already writes. That's well under 90 minutes of building. The rest of the unit is the run record, criteria, trials and write-up.
+
 <!-- ═════════════════════════════════════════════════════════════════════
 
      SUBMISSION CHECKLIST — unit 7
