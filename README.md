@@ -462,19 +462,392 @@ whose work got caught by it:
 
 <!-- Your five criteria across three trials. `run_eval.py --label before`. -->
 
+`python run_eval.py --label before` ran criteria 1, 2, 3 and 5 from `scenarios.py`, three trials back to back, with nothing changed in between. `run_eval.py` only calls `POST /submit`, so I wrote `run_appeals.py` for criterion 4 (submit, appeal, then read `/log`) and for the log half of criterion 5 (no decision entry for bad input). It runs three trials the same way. Output: `results/run_2026-11-22_2210_before.md` and `results/appeals_2026-11-22_2210_before.md`.
+
 | Criterion | Target | Run 1 | Run 2 | Run 3 | Verdict |
 | --------- | ------ | ----- | ----- | ----- | ------- |
-| 1.        |        |       |       |       |         |
-| 2.        |        |       |       |       |         |
-| 3.        |        |       |       |       |         |
-| 4.        |        |       |       |       |         |
-| 5.        |        |       |       |       |         |
+| 1. My own writing is rarely called AI, plain never | ≤ 1 of 10 `"ai"`, 0 of 3 plain | 0/10, plain 0/3 | 0/10, plain 0/3 | 0/10, plain 0/3 | **MET** |
+| 2. Clearly-AI and clearly-human text score far apart | median gap ≥ 0.30 | 0.43 | 0.43 | 0.43 | **MET** |
+| 3. All three labels are reachable | 3 of 3 get intended label | 2/3 | 2/3 | 2/3 | **MISSED** |
+| 4. Every appeal is recorded and moves the item to review | 10 of 10 + made-up id → 404, nothing logged | 10/10 + 404 | 10/10 + 404 | 10/10 + 404 | **MET** |
+| 5. Bad input is rejected clearly, not crashed on | 5 of 5 → 400, no `content_id`, no decision entry | 5/5 | 5/5 | 5/5 | **MET** |
+
+All three trials returned identical scores to four decimal places, as expected: nothing in either signal is random.
+
+- **Criterion 1:** none of my 10 pieces got "ai" in any trial; 4 got "human" and 6 got "unsure". It was closer than "0 of 10" makes it look. My plain Patti Smith paragraph scored **0.69**, right at the agreement cap: style was 1.0 (no inner punctuation, even sentences), and only the model's 0.41 kept the agreement rule in play. Without that rule it would have averaged 0.70 and been called AI.
+- **Criterion 2:** the human median was 0.39 and the AI median was 0.83, a gap of 0.43. But one AI text (0.65) and one of my pieces (0.62) overlap in the unsure band.
+- **Criterion 3 missed:** my clearly-AI text got "ai" (0.83) and my casual message got "human" (0.39), but my hand-edited AI paragraph got **"ai" (0.72) instead of "unsure"**, in all three trials. "Unsure" itself is reachable (6 of my criterion-1 pieces landed there), but this criterion named a specific text and target, and the target was missed.
 
 **Real output from one trial**, pasted as text, naming the file and function
-that produced it:
+that produced it (long label text shortened with "…"):
+
+**Criterion 1: my own writing** (`results/run_2026-11-22_2210_before.md`, produced by `run_eval.py::main`, trial 1):
 
 ```json
+[
+ {
+  "status": 200,
+  "guess": "unsure",
+  "confidence": 0.5783,
+  "model_score": 0.5238,
+  "style_score": 0.6327,
+  "label": "We can't tell whether … (unsure label)",
+  "sent": "When I was goping to college in my hometown. …"
+ },
+ {
+  "status": 200,
+  "guess": "unsure",
+  "confidence": 0.69,
+  "model_score": 0.4068,
+  "style_score": 1.0,
+  "label": "We can't tell whether … (unsure label)",
+  "sent": "Patti Smith contributed to her group as a lyr…"
+ },
+ {
+  "status": 200,
+  "guess": "unsure",
+  "confidence": 0.5179,
+  "model_score": 0.5058,
+  "style_score": 0.53,
+  "label": "We can't tell whether … (unsure label)",
+  "sent": "Some of the charts that are provided are a bi…"
+ },
+ {
+  "status": 200,
+  "guess": "human",
+  "confidence": 0.3932,
+  "model_score": 0.2861,
+  "style_score": 0.5003,
+  "label": "We think this was probably written by a person.",
+  "sent": "s When i was in the collage I used to go to l…"
+ },
+ {
+  "status": 200,
+  "guess": "human",
+  "confidence": 0.3912,
+  "model_score": 0.5914,
+  "style_score": 0.191,
+  "label": "We think this was probably written by a person.",
+  "sent": "Joan Armatrading first performed at a concert…"
+ },
+ {
+  "status": 200,
+  "guess": "unsure",
+  "confidence": 0.6151,
+  "model_score": 0.2302,
+  "style_score": 1.0,
+  "label": "We can't tell whether … (unsure label)",
+  "sent": "Bryan and his group vis 12 have a dataset tha…"
+ },
+ {
+  "status": 200,
+  "guess": "unsure",
+  "confidence": 0.5356,
+  "model_score": 0.3061,
+  "style_score": 0.7652,
+  "label": "We can't tell whether … (unsure label)",
+  "sent": "The team gave feedback about its deliverables…"
+ },
+ {
+  "status": 200,
+  "guess": "human",
+  "confidence": 0.3608,
+  "model_score": 0.5039,
+  "style_score": 0.2176,
+  "label": "We think this was probably written by a person.",
+  "sent": "Joan Anita Barbra Armatrading is a Kittitian-…"
+ },
+ {
+  "status": 200,
+  "guess": "unsure",
+  "confidence": 0.5994,
+  "model_score": 0.6136,
+  "style_score": 0.5852,
+  "label": "We can't tell whether … (unsure label)",
+  "sent": "Joan Armatrading did not mention anything abo…"
+ },
+ {
+  "status": 200,
+  "guess": "human",
+  "confidence": 0.2519,
+  "model_score": 0.5038,
+  "style_score": 0.0,
+  "label": "We think this was probably written by a person.",
+  "sent": "Patti Smith was a poet and singer. She was a …"
+ }
+]
+```
 
+**Criterion 2: score spread** (`results/run_2026-11-22_2210_before.md`, produced by `run_eval.py::main`, trial 1):
+
+```json
+[
+ {
+  "status": 200,
+  "guess": "human",
+  "confidence": 0.3932,
+  "model_score": 0.2861,
+  "style_score": 0.5003,
+  "label": "We think this was probably written by a person.",
+  "sent": "s When i was in the collage I used to go to l…"
+ },
+ {
+  "status": 200,
+  "guess": "human",
+  "confidence": 0.3912,
+  "model_score": 0.5914,
+  "style_score": 0.191,
+  "label": "We think this was probably written by a person.",
+  "sent": "Joan Armatrading first performed at a concert…"
+ },
+ {
+  "status": 200,
+  "guess": "unsure",
+  "confidence": 0.6151,
+  "model_score": 0.2302,
+  "style_score": 1.0,
+  "label": "We can't tell whether … (unsure label)",
+  "sent": "Bryan and his group vis 12 have a dataset tha…"
+ },
+ {
+  "status": 200,
+  "guess": "unsure",
+  "confidence": 0.5356,
+  "model_score": 0.3061,
+  "style_score": 0.7652,
+  "label": "We can't tell whether … (unsure label)",
+  "sent": "The team gave feedback about its deliverables…"
+ },
+ {
+  "status": 200,
+  "guess": "human",
+  "confidence": 0.3608,
+  "model_score": 0.5039,
+  "style_score": 0.2176,
+  "label": "We think this was probably written by a person.",
+  "sent": "Joan Anita Barbra Armatrading is a Kittitian-…"
+ },
+ {
+  "status": 200,
+  "guess": "ai",
+  "confidence": 0.7201,
+  "model_score": 0.7897,
+  "style_score": 0.6506,
+  "label": "This writing closely matches patterns … (AI label)",
+  "sent": "Effective time management is essential for su…"
+ },
+ {
+  "status": 200,
+  "guess": "ai",
+  "confidence": 0.8296,
+  "model_score": 0.9175,
+  "style_score": 0.7417,
+  "label": "This writing closely matches patterns … (AI label)",
+  "sent": "Climate change represents one of the most pre…"
+ },
+ {
+  "status": 200,
+  "guess": "unsure",
+  "confidence": 0.6534,
+  "model_score": 0.7691,
+  "style_score": 0.5378,
+  "label": "We can't tell whether … (unsure label)",
+  "sent": "Reading offers numerous benefits for personal…"
+ },
+ {
+  "status": 200,
+  "guess": "ai",
+  "confidence": 0.8277,
+  "model_score": 0.7578,
+  "style_score": 0.8977,
+  "label": "This writing closely matches patterns … (AI label)",
+  "sent": "Remote work has transformed the modern workpl…"
+ },
+ {
+  "status": 200,
+  "guess": "ai",
+  "confidence": 0.8352,
+  "model_score": 0.8149,
+  "style_score": 0.8555,
+  "label": "This writing closely matches patterns … (AI label)",
+  "sent": "Regular physical activity plays a crucial rol…"
+ }
+]
+```
+
+**Criterion 3: label coverage** (`results/run_2026-11-22_2210_before.md`, produced by `run_eval.py::main`, trial 1):
+
+```json
+[
+ {
+  "status": 200,
+  "guess": "ai",
+  "confidence": 0.8296,
+  "model_score": 0.9175,
+  "style_score": 0.7417,
+  "label": "This writing closely matches patterns … (AI label)",
+  "sent": "Climate change represents one of the most pre…"
+ },
+ {
+  "status": 200,
+  "guess": "human",
+  "confidence": 0.3932,
+  "model_score": 0.2861,
+  "style_score": 0.5003,
+  "label": "We think this was probably written by a person.",
+  "sent": "s When i was in the collage I used to go to l…"
+ },
+ {
+  "status": 200,
+  "guess": "ai",
+  "confidence": 0.72,
+  "model_score": 0.7827,
+  "style_score": 0.6574,
+  "label": "This writing closely matches patterns … (AI label)",
+  "sent": "Effective time management is important for su…"
+ }
+]
+```
+
+**Criterion 4: appeals** (`results/appeals_2026-11-22_2210_before.md`, produced by `run_appeals.py::run_trial`, trial 1):
+
+```json
+{
+ "appeals (first 2 of 10, all 10 passed)": [
+  {
+   "content_id": "08c87851-d516-4b76-9c63-dc4cb540880e",
+   "submit_status": 200,
+   "appeal_status": 200,
+   "appeal_response": {
+    "content_id": "08c87851-d516-4b76-9c63-dc4cb540880e",
+    "message": "Thanks. Your appeal has been recorded and a person will review this decision.",
+    "status": "under_review"
+   },
+   "appeal_entries_in_log": 1,
+   "passed": true
+  },
+  {
+   "content_id": "45d15d89-8522-404d-8f86-2fd34c1003b9",
+   "submit_status": 200,
+   "appeal_status": 200,
+   "appeal_response": {
+    "content_id": "45d15d89-8522-404d-8f86-2fd34c1003b9",
+    "message": "Thanks. Your appeal has been recorded and a person will review this decision.",
+    "status": "under_review"
+   },
+   "appeal_entries_in_log": 1,
+   "passed": true
+  }
+ ],
+ "made_up_id": {
+  "status": 404,
+  "response": {
+   "error": "unknown_content_id",
+   "message": "We couldn't find a submission with that content_id."
+  },
+  "log_entries_added": 0,
+  "passed": true
+ }
+}
+```
+
+**Criterion 5: bad input, responses** (`results/run_2026-11-22_2210_before.md`, produced by `run_eval.py::main`, trial 1):
+
+```json
+[
+ {
+  "status": 400,
+  "guess": null,
+  "confidence": null,
+  "model_score": null,
+  "style_score": null,
+  "label": null,
+  "sent": "{\"creator_id\": \"eval_bad_missing\"}…"
+ },
+ {
+  "status": 400,
+  "guess": null,
+  "confidence": null,
+  "model_score": null,
+  "style_score": null,
+  "label": null,
+  "sent": "{\"text\": null, \"creator_id\": \"eval_bad_null\"}…"
+ },
+ {
+  "status": 400,
+  "guess": null,
+  "confidence": null,
+  "model_score": null,
+  "style_score": null,
+  "label": null,
+  "sent": "(empty text)…"
+ },
+ {
+  "status": 400,
+  "guess": null,
+  "confidence": null,
+  "model_score": null,
+  "style_score": null,
+  "label": null,
+  "sent": "   \t  …"
+ },
+ {
+  "status": 400,
+  "guess": null,
+  "confidence": null,
+  "model_score": null,
+  "style_score": null,
+  "label": null,
+  "sent": "word word word word word word word word word …"
+ }
+]
+```
+
+**Criterion 5: bad input, log check** (`results/appeals_2026-11-22_2210_before.md`, produced by `run_appeals.py::run_trial`, trial 1):
+
+```json
+[
+ {
+  "sent": {
+   "creator_id": "eval_bad_missing_appeals_t1"
+  },
+  "status": 400,
+  "response": {
+   "error": "missing_text",
+   "message": "text is required."
+  },
+  "new_log_entries": [
+   {
+    "event": "rejected",
+    "status": "rejected",
+    "reason": "missing_text"
+   }
+  ],
+  "passed": true
+ },
+ {
+  "sent": {
+   "text": null,
+   "creator_id": "eval_bad_null_appeals_t1"
+  },
+  "status": 400,
+  "response": {
+   "error": "invalid_text",
+   "message": "text must be a string."
+  },
+  "new_log_entries": [
+   {
+    "event": "rejected",
+    "status": "rejected",
+    "reason": "invalid_text"
+   }
+  ],
+  "passed": true
+ },
+ {
+  "…": "3 more, all passed"
+ }
+]
 ```
 
 **Diagnoses**
