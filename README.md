@@ -1089,6 +1089,94 @@ I'd go further toward fewer wrong accusations: raise the AI line until careful h
 
 **Size check:** waitress plus a start command is a few lines. The instrumentation is one timing wrapper around stages that already exist in `app.py::submit`, plus extra fields on log entries that `audit.py` already writes. That's well under 90 minutes of building. The rest of the unit is the run record, criteria, trials and write-up.
 
+---
+
+## Instrumentation
+
+**Run path:** `python serve.py` runs the app on waitress. The command, clean-checkout steps and environment are in `RUNNING.md` under "Path B: how this runs".
+
+**What gets recorded.** Every HTTP request, on any route and with any outcome, writes one JSON line to `logs/requests.jsonl` (`app.py::_record_request`, written by `audit.py::log_request`):
+
+| Field | What it is |
+|---|---|
+| `timestamp` | when the response went out (UTC) |
+| `method`, `path`, `status` | what was asked for and how it ended: 200, 400, 429, 500… |
+| `duration_ms` | wall-clock time from the request arriving to the response leaving |
+| `cpu_ms` | CPU time the process used during the request, across all cores |
+| `stages_ms` | time in each stage of `/submit`: `validate`, `signal_one` (GPT-2), `signal_two` (style), `combine_and_label`, `audit_log` |
+| `memory_mb` | the process's resident memory after the request |
+| `model_loaded_at_start` | whether GPT-2 was already in memory when the request arrived: `false` means a cold start |
+| `in` | request size in bytes, `creator_id`, character and word count. **Never the text itself**: a writer's work doesn't belong in an ops log |
+| `out` | `content_id`, `guess`, `confidence` and `status`, or the `error` code |
+
+The decision record is unchanged. `logs/audit.jsonl` still holds the nine unit 8 fields for every decision, appeal and rejection, and the two logs join on `content_id`.
+
+**Failures leave a record too.**
+- A rejected input (400), a rate-limited request (429) and an appeal all get a line.
+- A crash would as well: an unhandled exception now returns a JSON 500 through `app.py::_unhandled`, so it passes through the same recorder instead of becoming an HTML error page with no trace.
+- A 429 never reaches my route, so its line has no stages and no `creator_id`. The rate limiter answers before my code runs.
+
+**A real session, pasted as text** (`logs/requests.jsonl`, 2026-11-23, one `python serve.py` start). It shows one cold request, ten warm scored requests, then four failures: too few words, unparseable JSON, a missing `text` field, and a 429 from a burst on one `creator_id`.
+
+```json
+{"timestamp": "2026-11-23T07:05:43+00:00", "method": "POST", "path": "/submit", "status": 200, "duration_ms": 29735.81, "cpu_ms": 11656.25, "stages_ms": {"validate": 0.72, "signal_one": 29729.8, "signal_two": 2.41, "combine_and_label": 0.02, "audit_log": 2.38}, "memory_mb": 882.7, "model_loaded_at_start": false, "in": {"bytes": 206, "creator_id": "cost_cold", "chars": 167, "words": 35}, "out": {"content_id": "330ea7a3-5ba7-4c47-b7e6-515a042ce993", "guess": "unsure", "confidence": 0.5783, "status": "decided"}}
+{"timestamp": "2026-11-23T07:05:43+00:00", "method": "POST", "path": "/submit", "status": 200, "duration_ms": 196.13, "cpu_ms": 1000.0, "stages_ms": {"validate": 0.78, "signal_one": 192.33, "signal_two": 0.88, "combine_and_label": 0.01, "audit_log": 1.69}, "memory_mb": 917.5, "model_loaded_at_start": true, "in": {"bytes": 448, "creator_id": "cost_warm_1", "chars": 407, "words": 54}, "out": {"content_id": "3e751e48-8e0d-4c61-b02f-9f76c0848b09", "guess": "ai", "confidence": 0.7201, "status": "decided"}}
+{"timestamp": "2026-11-23T07:05:44+00:00", "method": "POST", "path": "/submit", "status": 200, "duration_ms": 342.0, "cpu_ms": 1078.12, "stages_ms": {"validate": 1.9, "signal_one": 336.42, "signal_two": 1.33, "combine_and_label": 0.01, "audit_log": 1.92}, "memory_mb": 927.8, "model_loaded_at_start": true, "in": {"bytes": 458, "creator_id": "cost_warm_2", "chars": 417, "words": 57}, "out": {"content_id": "9ae943e7-9179-44f2-bd63-4b533637db5d", "guess": "ai", "confidence": 0.8296, "status": "decided"}}
+{"timestamp": "2026-11-23T07:05:44+00:00", "method": "POST", "path": "/submit", "status": 200, "duration_ms": 222.48, "cpu_ms": 796.88, "stages_ms": {"validate": 0.97, "signal_one": 218.35, "signal_two": 0.88, "combine_and_label": 0.01, "audit_log": 1.88}, "memory_mb": 960.5, "model_loaded_at_start": true, "in": {"bytes": 418, "creator_id": "cost_warm_3", "chars": 377, "words": 54}, "out": {"content_id": "7613a06f-a564-4364-96b1-c51f428b6499", "guess": "unsure", "confidence": 0.6534, "status": "decided"}}
+{"timestamp": "2026-11-23T07:05:44+00:00", "method": "POST", "path": "/submit", "status": 200, "duration_ms": 203.78, "cpu_ms": 875.0, "stages_ms": {"validate": 1.2, "signal_one": 200.73, "signal_two": 0.51, "combine_and_label": 0.0, "audit_log": 1.04}, "memory_mb": 979.6, "model_loaded_at_start": true, "in": {"bytes": 425, "creator_id": "cost_warm_4", "chars": 384, "words": 55}, "out": {"content_id": "7d0e6098-90c7-45dc-83f5-4941f2bec063", "guess": "ai", "confidence": 0.8277, "status": "decided"}}
+{"timestamp": "2026-11-23T07:05:44+00:00", "method": "POST", "path": "/submit", "status": 200, "duration_ms": 196.35, "cpu_ms": 1078.12, "stages_ms": {"validate": 1.09, "signal_one": 192.22, "signal_two": 0.86, "combine_and_label": 0.01, "audit_log": 1.71}, "memory_mb": 956.1, "model_loaded_at_start": true, "in": {"bytes": 437, "creator_id": "cost_warm_5", "chars": 396, "words": 58}, "out": {"content_id": "b1be0581-d7a7-4f60-9f62-bb876454978d", "guess": "ai", "confidence": 0.8352, "status": "decided"}}
+{"timestamp": "2026-11-23T07:05:45+00:00", "method": "POST", "path": "/submit", "status": 200, "duration_ms": 400.9, "cpu_ms": 1671.88, "stages_ms": {"validate": 1.07, "signal_one": 396.52, "signal_two": 1.39, "combine_and_label": 0.01, "audit_log": 1.52}, "memory_mb": 1012.8, "model_loaded_at_start": true, "in": {"bytes": 746, "creator_id": "cost_warm_6", "chars": 690, "words": 120}, "out": {"content_id": "3ac8466e-3fd3-4a4c-a719-fcb7a11b3fe6", "guess": "human", "confidence": 0.3912, "status": "decided"}}
+{"timestamp": "2026-11-23T07:05:45+00:00", "method": "POST", "path": "/submit", "status": 200, "duration_ms": 243.36, "cpu_ms": 1000.0, "stages_ms": {"validate": 1.19, "signal_one": 239.37, "signal_two": 1.06, "combine_and_label": 0.01, "audit_log": 1.34}, "memory_mb": 946.4, "model_loaded_at_start": true, "in": {"bytes": 414, "creator_id": "cost_warm_7", "chars": 368, "words": 70}, "out": {"content_id": "4238f4b5-e555-4bf5-82e0-4329f5d4ce88", "guess": "unsure", "confidence": 0.6151, "status": "decided"}}
+{"timestamp": "2026-11-23T07:05:45+00:00", "method": "POST", "path": "/submit", "status": 200, "duration_ms": 301.99, "cpu_ms": 1156.25, "stages_ms": {"validate": 1.49, "signal_one": 296.23, "signal_two": 1.78, "combine_and_label": 0.01, "audit_log": 2.07}, "memory_mb": 986.4, "model_loaded_at_start": true, "in": {"bytes": 591, "creator_id": "cost_warm_8", "chars": 550, "words": 92}, "out": {"content_id": "a69dc2d5-a6a7-4010-a59f-a1c2a6de9c41", "guess": "unsure", "confidence": 0.5356, "status": "decided"}}
+{"timestamp": "2026-11-23T07:05:45+00:00", "method": "POST", "path": "/submit", "status": 200, "duration_ms": 275.61, "cpu_ms": 1203.12, "stages_ms": {"validate": 1.49, "signal_one": 270.43, "signal_two": 1.12, "combine_and_label": 0.01, "audit_log": 2.11}, "memory_mb": 957.5, "model_loaded_at_start": true, "in": {"bytes": 436, "creator_id": "cost_warm_9", "chars": 385, "words": 67}, "out": {"content_id": "2913ca97-3db6-4d0c-8ed3-b0772260b565", "guess": "human", "confidence": 0.3608, "status": "decided"}}
+{"timestamp": "2026-11-23T07:05:46+00:00", "method": "POST", "path": "/submit", "status": 200, "duration_ms": 266.86, "cpu_ms": 1265.62, "stages_ms": {"validate": 1.25, "signal_one": 262.87, "signal_two": 0.85, "combine_and_label": 0.01, "audit_log": 1.4}, "memory_mb": 953.2, "model_loaded_at_start": true, "in": {"bytes": 423, "creator_id": "cost_warm_10", "chars": 351, "words": 67}, "out": {"content_id": "fee8b23d-3be7-4486-b1e7-e6231d093854", "guess": "unsure", "confidence": 0.5994, "status": "decided"}}
+{"timestamp": "2026-11-23T07:05:46+00:00", "method": "POST", "path": "/submit", "status": 400, "duration_ms": 4.58, "cpu_ms": 31.25, "stages_ms": {"validate": 1.25}, "memory_mb": 953.2, "model_loaded_at_start": true, "in": {"bytes": 61, "creator_id": "cost_fail", "chars": 22, "words": 5}, "out": {"error": "not_enough_words"}}
+{"timestamp": "2026-11-23T07:05:46+00:00", "method": "POST", "path": "/submit", "status": 400, "duration_ms": 4.16, "cpu_ms": 0.0, "stages_ms": {}, "memory_mb": 953.2, "model_loaded_at_start": true, "in": {"bytes": 13}, "out": {"error": "invalid_json"}}
+{"timestamp": "2026-11-23T07:05:46+00:00", "method": "POST", "path": "/submit", "status": 400, "duration_ms": 2.71, "cpu_ms": 0.0, "stages_ms": {}, "memory_mb": 953.2, "model_loaded_at_start": true, "in": {"bytes": 27}, "out": {"error": "missing_text"}}
+{"timestamp": "2026-11-23T07:05:46+00:00", "method": "POST", "path": "/submit", "status": 429, "duration_ms": 4.45, "cpu_ms": 0.0, "stages_ms": {}, "memory_mb": 953.2, "model_loaded_at_start": true, "in": {"bytes": 40}, "out": {"error": "rate_limited"}}
+```
+
+What these show:
+1. **The first request after start is the expensive one:** 29.7 s, and `model_loaded_at_start` is `false`. All of it is `signal_one`, because that's where GPT-2 gets loaded.
+2. **After that, every scored request is 0.2–0.4 s, and 98% of it is GPT-2.** Signal two, combining and the audit write together take under 5 ms.
+3. **The failed requests cost almost nothing (2–5 ms),** because validation turns them away before either signal runs.
+4. **Memory jumps from about 52 MB (measured on the clean checkout before the model loaded) to 880–1,010 MB once GPT-2 is in.** It also drifts up and down by about 100 MB from request to request.
+
+---
+
+## What It Costs
+
+**The real cost of this system is compute, not money.** There's no API and no tokens billed: GPT-2 runs on my own CPU. So I measured seconds of compute and memory.
+
+**How I measured it.** I started `python serve.py` fresh and sent one submission to get the cold start out of the way. Then I sent **ten** scored submissions: 54–120 words each, five of my own pieces and five AI texts, each under its own `creator_id` so the rate limiter stayed out of it. Each request's `duration_ms`, `cpu_ms`, `stages_ms` and `memory_mb` came from the instrumentation above, not from a stopwatch or a pricing page. The averages are over those ten lines, all pasted above.
+
+Machine: Windows 11, 4 physical / 8 logical cores (Intel), 7.8 GB RAM, torch 2.15.0 on CPU using 4 threads.
+
+| One scored `/submit` (warm, n = 10) | Mean | Median | Min | Max |
+|---|---|---|---|---|
+| Wall-clock time | **265 ms** | 255 ms | 196 ms | 401 ms |
+| CPU time (all cores) | **1.11 s** | 1.08 s | 0.80 s | 1.67 s |
+| of which GPT-2 (`signal_one`) | 261 ms | 251 ms | 192 ms | 397 ms |
+| Style signal | 1.1 ms | 1.0 ms | 0.5 ms | 1.8 ms |
+| Audit-log write | 1.7 ms | 1.7 ms | 1.0 ms | 2.1 ms |
+
+| One-off and standing costs | Measured |
+|---|---|
+| Cold start (first `/submit` after starting) | **14.5 s, 16.2 s, 29.7 s** in three separate starts: a wide spread, and the slowest dominates |
+| Memory before the model loads | 52 MB |
+| Memory while serving | **880–1,010 MB** |
+| A rejected request (400 / 429) | 2–5 ms wall, effectively no CPU |
+| Log growth | about 0.37 KB per request plus 0.46 KB per decision |
+
+**So one warm scored request costs about 1.1 CPU-seconds,** spread over roughly 4 cores for a quarter of a second. CPU time is about four times wall time because PyTorch splits the GPT-2 forward pass across 4 threads. Longer text costs more: the 120-word piece took 1.67 CPU-s, against 0.80–1.08 for the 54–58-word ones. GPT-2 reads at most 400 tokens, so that's the ceiling.
+
+**What that means for running it:**
+- **One machine like mine** can score roughly 4 requests a second at best: four cores, about 1.1 CPU-s each. That's far more than my rate limit of 5 a minute per writer.
+- **The binding cost is memory, not CPU.** The process needs about 0.9–1.0 GB the moment the first request arrives, which is roughly double the 512 MB free tier. That's why this runs locally (Path B).
+- **Every restart pays a 15–30 second cold start.** A host that sleeps when idle would charge that to whichever writer arrives first.
+
+**How the CPU number could be wrong.** `cpu_ms` is process-wide, and on Windows it ticks in 15.6 ms steps. For a single request at a time, which is how I measured, it's that request's cost. If requests overlapped on different threads, each one's line would include the others' CPU.
+
 <!-- ═════════════════════════════════════════════════════════════════════
 
      SUBMISSION CHECKLIST — unit 7

@@ -250,23 +250,52 @@ change that. Stop it with Ctrl+C.
 
 **From a clean checkout to a running service:**
 
+> ⚠️ **Windows: clone into a short path.** `pip install` fails with
+> `OSError: [WinError 206] The filename or extension is too long` if the repo
+> sits deep in your folders. Windows caps paths at 260 characters, and numpy's
+> install writes files with very long names. I hit this the first time I
+> followed these steps from a fresh clone. Clone somewhere short, like
+> `C:\Users\<you>\pg`, or turn on Windows long-path support.
+
 ```bash
-git clone https://github.com/Mehton/ai201-project4-provenance-guard-starter-v2026.git
-cd ai201-project4-provenance-guard-starter-v2026
+git clone https://github.com/Mehton/ai201-project4-provenance-guard-starter-v2026.git pg
+cd pg
 python -m venv .venv
 .venv\Scripts\activate            # macOS/Linux: source .venv/bin/activate
-pip install -r requirements.txt
+pip install -r requirements.txt   # several minutes: torch is the big one
 python detector.py                # downloads gpt2 once (~526 MB) and scores a sample
 python serve.py
 ```
 
-Then, in a second terminal:
+`python serve.py` prints nothing until it's stopped when its output is
+redirected, so check it's up with `/health` rather than waiting for a banner.
+
+Then, in a second terminal (Git Bash, macOS or Linux):
 
 ```bash
 curl http://127.0.0.1:5000/health
 curl -X POST http://127.0.0.1:5000/submit -H "Content-Type: application/json" \
-  -d '{"text": "<at least 20 words of English>", "creator_id": "you"}'
+  -d '{"text": "I took the train to my aunt'"'"'s house on Sunday. It was late, the coffee was bad, and I finished a whole book before we got there.", "creator_id": "you"}'
 ```
+
+In PowerShell, `curl` is a different program. Use `curl.exe` and escape the
+inner quotes:
+
+```powershell
+curl.exe -X POST http://127.0.0.1:5000/submit -H "Content-Type: application/json" -d '{\"text\": \"I took the train to my aunt''s house on Sunday. It was late, the coffee was bad, and I finished a whole book before we got there.\", \"creator_id\": \"you\"}'
+```
+
+The text needs **at least 20 words**; anything shorter gets a 400
+`not_enough_words`. The first `/submit` after starting takes 15–20 seconds
+while GPT-2 loads into memory; after that, about a third of a second.
+
+**What the clean-checkout test showed** (repo cloned fresh from GitHub on the
+build machine, new virtual environment, these steps followed in order):
+
+1. The first `pip install` failed with WinError 206, which is why the warning above exists.
+2. My example curl originally used placeholder text, `"<at least 20 words of English>"`, which my own 20-word check rejected with a 400. It now uses a real sentence.
+3. `python detector.py` did **not** re-download the model, because gpt2 was already in this machine's shared Hugging Face cache. The download step is the one part of these instructions I haven't seen run truly from scratch.
+4. After those, `/health` answered and a real submission scored: 200, "unsure", 14.5 s cold.
 
 **What it writes while it runs:**
 
