@@ -277,7 +277,9 @@ $ curl "http://127.0.0.1:5050/log?limit=2"
 
 ## Rate Limiting
 
-**My limits:** **_ per minute, _** per day
+**My limits:** **5 per minute, 50 per day**
+
+<!-- (`config.py`: `RATE_LIMIT_PER_MINUTE`, `RATE_LIMIT_PER_DAY`) -->
 
 **Why those numbers and not others:**
 
@@ -286,16 +288,40 @@ $ curl "http://127.0.0.1:5050/log?limit=2"
      thresholds. Your numbers have to be liveable for the first and hostile to
      the second. -->
 
-**What a caller counts as:** <!-- per address, or per creator_id? They fail
-differently — one script can look like a thousand callers, and one household
-can look like one. -->
+- **A real writer** submits a piece, maybe fixes a typo and resubmits, maybe tries a second draft. That's a couple of requests a minute at most, and a few dozen on a heavy day. Five a minute leaves room to resubmit quickly without ever hitting the limit, and 50 a day is far more than anyone writes.
+- **A script mapping my thresholds** needs to send hundreds or thousands of small variations, nudging a text until it slips from "AI" to "unsure" and learning where my 0.70 line is. At 50 a day, a thousand probes takes 20 days per `creator_id` instead of a few seconds. The per-minute cap stops a burst; the per-day cap stops a slow, patient script that stays under 5 a minute.
+- **Why not tighter?** At 1–2 a minute, a writer fixing a typo would get a 429 for doing something normal, and the person hurt would be a real writer, not an attacker. **Why not looser?** The starter's 10 a minute and 200 a day would let one caller send 200 probes a day, enough to map the thresholds in under a week.
+
+**What a caller counts as:** A **`creator_id`**, falling back to the IP address when the request has none (`app.py::rate_limit_key`). This fails in one specific way: `creator_id` is whatever the caller says it is, so a script can invent a new id for every request and never hit the limit. Per-address limiting fails differently: one script behind rotating proxies looks like a thousand callers, while a whole household or classroom on one Wi-Fi looks like one caller and shares a single quota. I chose per-creator because it never punishes writers for sharing a network. Its weakness, a script inventing ids, would need sign-in to close properly.
 
 **The run of status codes when I pushed past it:**
 
 <!-- python run_attacks.py --flood 15 -->
 
 ```
+$ python run_attacks.py --flood 15
 
+15 submissions as 'flood_tester' against http://127.0.0.1:5000
+
+============================================================
+200 200 200 200 200 429 429 429 429 429 429 429 429 429 429
+============================================================
+
+10 of 15 were rate limited.
+Wrote results\flood_2026-11-22_2041.md
+```
+
+Each 429 left a trace. `GET /log` shows 10 entries like this one, next to the 5 decisions that got through:
+
+```json
+{
+  "creator_id": "flood_tester",
+  "event": "rejected",
+  "limit": "5 per 1 minute",
+  "reason": "rate_limited",
+  "status": "rejected",
+  "timestamp": "2026-11-23T04:41:33+00:00"
+}
 ```
 
 ---
