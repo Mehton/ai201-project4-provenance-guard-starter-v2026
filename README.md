@@ -271,6 +271,18 @@ $ curl "http://127.0.0.1:5050/log?limit=2"
 - _What came back:_ A working style signal, plus a surprise: vocabulary variety pointed the wrong way (the AI text had the _most_ varied vocabulary). It was given no weight, and the weights went from my planned 60/40 to 50/50 with an agreement rule. But the calibration texts it picked for "formal" and "clearly human" were famous public-domain passages, not mine.
 - _What I changed:_ I replaced them with my own texts: a factual bio I wrote with footnote markers, and a casual message I'd typed. That exposed two things the borrowed texts hid. The bio was labelled AI once its footnotes were removed, a formatting-only false positive. And none of my human writing could reach the human label at 0.35. I chose to move the thresholds to 0.40 / 0.70, accepting that lightly edited AI now lands in "unsure".
 
+**Moment 3 (unit 8): filling in my criteria tests**
+
+- _What I asked for:_ To set up `scenarios.py` and run my five criteria three times.
+- _What came back:_ Claude set up everything that didn't need my writing: the bad-input bodies, five AI texts it generated and marked as AI, and a new `run_appeals.py`, because `run_eval.py` can't test appeals. It refused to make up "my own writing" and left `REPLACE ME` placeholders that block the run, then asked me for 7 paragraphs and a hand-edited AI paragraph.
+- _What I changed:_ I supplied my own writing: critiques, a team retrospective, and my Joan Armatrading and Patti Smith reports. Claude pointed out that two of the paragraphs were mostly direct quotations, so they weren't really my words, and I left them out. I edited the AI paragraph by hand myself. My light edits are why criterion 3 missed, and I kept that result rather than re-editing to make it pass.
+
+**Moment 4 (unit 8): choosing the one improvement**
+
+- _What I asked for:_ To fix one thing after the attack run.
+- _What came back:_ Before changing any code, Claude replayed my recorded scores through three candidate fixes. Input validation went from 20 broken to 14 with no new breaks. Raising the AI line to 0.80 got to 19, fixed the worst outcome, but broke EV04. Reweighting changed nothing.
+- _What I changed:_ I chose input validation over the threshold move, even though the threshold move would also have flipped my missed criterion 3 to "met". Moving the line to make a miss pass felt too close to lowering the target. Later, Claude's replay of a "one-sided punctuation" fix showed it would only fix 1 of my 4 false positives, which is why "What's Still Broken" says the real fix isn't another tweak to the style signal.
+
 <!-- ═══════════════════════ UNIT 8 — THE TEST ═══════════════════════ -->
 
 ---
@@ -1017,10 +1029,43 @@ All 84 scored responses in the criteria run are identical to the "before" run, t
 <!-- For each attack still getting through and each criterion still missed:
      what you'd do, and why you stopped. -->
 
+After the improvement, 14 attacks still break and criterion 3 is still missed. Grouped by the diagnosis they share:
+
+**1. Careful human writing called AI: FP02, FP03, FP04, FP05** *(Pattern B; the worst outcome is here)*
+- **What I'd do:** stop letting "absence" count as evidence. No inner punctuation should mean "no evidence" (0.5), not "AI" (1.0).
+- **What that would actually do:** I replayed it on the recorded scores, and it only fixes **FP04** (0.76 → 0.70, unsure). FP02, FP03 and FP05 stay "AI" at 0.72–0.77, because their sentence lengths are even *and* GPT-2 finds them predictable. Two of my three measures, on two separate signals, honestly can't tell a careful writer from a model.
+- **The real fix** is not another tweak to signal two. It's a signal that measures something other than surface shape, or a rule that a high-confidence AI label always goes to a person before a writer sees it.
+- **Why I stopped:** one change per measured run. The fix that would actually protect FP03 (moving the AI line up to about 0.80) would also send most real AI text to "unsure". I wasn't willing to make that trade without measuring it as its own run.
+
+**2. Short sentences make AI text look human: EV02, EV03, EV05, EV06, EV09, PI01, PI02, PI03** *(Pattern A)*
+- **What I'd do:** make sentence-length spread robust, so one or two very short sentences can't swing it. Ignore sentences under 4 words, or use the median distance from the median instead of standard deviation ÷ mean.
+- **Why I stopped:** real people write "Obviously." and "Worth it." too. A spread that ignores short sentences would make punchy human writing look *more* AI-like, which moves the cost onto writers.
+- **EV05 is also arguable.** A heavy human rewrite of AI text being called "human" may be the right answer, not a failure.
+- **The prompt injections (PI01–03)** aren't a separate problem: nothing in my service reads instructions. They broke through the same short-sentence mechanism, so they'd go with this fix.
+
+**3. Typos hide AI text from signal one: EV01**
+- **What I'd do:** score perplexity on spell-corrected text.
+- **Why I stopped:** my own casual writing ("collage", "chatin") reads as human partly *because* of its typos. Correcting spelling would push real writers like me toward "AI" to catch one evasion.
+
+**4. Punctuation padding hides sentence breaks: EV07**
+- **What I'd do:** also split sentences on semicolons, and cap how far punctuation density alone can pull a score toward "human".
+- **Why I stopped:** this is a small, safe change, but it's a second change. It would have made my before/after comparison unreadable. It would be next on my list.
+
+**5. Criterion 3 still missed:** my hand-edited AI paragraph gets "ai" (0.72), not "unsure".
+- **What I'd do:** nothing to the detector. Light synonym swaps leave the text 95% machine-written, so "ai" is arguably the correct reading. Forcing it to "unsure" would mean making the AI label harder to reach for all AI text.
+- **What I'd tell my unit 7 self:** "borderline" needed a measurable definition, such as "at least a third of the sentences rewritten". The criterion stays as written, and it stays missed.
+
+**Not attacks, but still true:**
+- **Writers in non-Latin scripts** now get "we need 20 words" instead of an honest "we only check English".
+- **Per-creator rate limits** can be dodged by inventing a new `creator_id` for every request.
+- **Rate-limit counts live in memory,** so a restart forgets them.
+
 **The trade I'd make if this ran for real:**
 
 <!-- Two sentences. Fewer wrong accusations means more AI text getting through.
      Say which way you'd go and WHO PAYS FOR IT. -->
+
+I'd go further toward fewer wrong accusations: raise the AI line until careful human writing like FP03 stops landing in it, and send every AI label to a person before the writer sees it. The site and its honest writers pay for that, competing with AI text that now passes as "unsure", but the alternative puts the cost on non-native and formal writers, who are the least able to argue back.
 
 <!-- ═════════════════════════════════════════════════════════════════════
 
@@ -1041,17 +1086,18 @@ All 84 scored responses in the criteria run are identical to the "before" run, t
 
      SUBMISSION CHECKLIST — unit 8
 
-       [ ] Rate limiting on /submit, with your numbers justified
-       [ ] The pasted run of status codes showing 429
-       [ ] Audit log with all nine fields, recording rejections too
-       [ ] The attack set run IN FULL, every input with an outcome
-       [ ] Ten audit log entries pasted as text
-       [ ] Five criteria across three trials
-       [ ] A diagnosis for every miss and every broken attack — stage AND mechanism
-       [ ] One improvement, with Attack Run — After
-       [ ] What's Still Broken, including the production trade
-       [ ] At least four new commits
+       [x] Rate limiting on /submit, with your numbers justified
+       [x] The pasted run of status codes showing 429
+       [x] Audit log with all nine fields, recording rejections too
+       [x] The attack set run IN FULL, every input with an outcome
+       [x] Ten audit log entries pasted as text
+       [x] Five criteria across three trials
+       [x] A diagnosis for every miss and every broken attack — stage AND mechanism
+       [x] One improvement, with Attack Run — After
+       [x] What's Still Broken, including the production trade
+       [x] At least four new commits
        [ ] The SAME repository URL as last unit
+           https://github.com/Mehton/ai201-project4-provenance-guard-starter-v2026
 
      Do not delete and recreate this repository.
      ═════════════════════════════════════════════════════════════════════ -->
