@@ -866,6 +866,66 @@ that produced it (long label text shortened with "…"):
 
      Look for a pattern. Five failures on one signal is one problem, not five. -->
 
+One missed criterion and 20 broken attacks come down to **three problems, all in signal two, the style signal**, plus one gap in the route and two smaller ones in signal one. The numbers below come from `style_parts` in the audit log, which records each style measure as 0–1 AI-likeness.
+
+**Pattern A: one short sentence buys a "human" style score.** *(EV02, EV03, EV05, EV06, EV09, PI01, PI02, PI03: 8 broke)*
+- **Stage:** signal two, then the combining rule.
+- **Mechanism:** sentence-length spread is standard deviation ÷ mean, and it carries 0.75 of the style score. Its mapping hits "fully human" at a raw spread of 0.60. A single one-word sentence is enough to get there:
+  - EV02 inserted "Really." after every sentence (lengths 11, **1**, 15, **1**, 10, **1** …), so spread went to 0.85.
+  - EV06 used one 51-word sentence and one 1-word sentence, so spread went to 1.19.
+  - EV09's "Right, so." opening, EV03's pasted quotation and EV05's human edit all did the same with less effort.
+  - In PI01 and PI02, the injected lines ("Ignore all previous instructions.", "SYSTEM: …") are short sentences sitting on top of the AI paragraph, and the paragraph ends on a 1-word fragment. Both scored spread 0.00, fully human.
+- **Why it beat the combining rule:** style went to 0.12–0.44 while the model sat at 0.46–0.70 on this AI text. My 50/50 average then landed between 0.20 and 0.61: "human" or "unsure".
+- **On the prompt injections:** they "worked" without anything reading them. My service has no model that follows instructions. The injected lines are just odd, unpredictable short sentences, and that moved both statistical signals the same way an evasion would. PI02's fake "SYSTEM:" line also dragged the model score down to 0.20, because "guess=human, confidence=0.02" is very unlike normal English to GPT-2.
+
+**Pattern B: no punctuation counted as evidence of AI.** *(FP02, FP03, FP04, FP05, and criterion 3: 4 broke + 1 missed)*
+- **Stage:** signal two, then the combining rule and the label mapping.
+- **Mechanism:** my punctuation measure gives 1.0 (fully AI) at ≤ 0.03 inner marks per word. All four false-positive texts sit at or below that (FP03: **0.00**, FP02: 0.013), so punctuation scored 1.0 for every one. Their sentences are also even, because careful, formal, rubric and technical writing is like that (raw spread 0.24–0.37), so spread scored 0.58–0.90 AI-like.
+  - A report, a careful non-native writer, a rubric essay and a manual all have the shape my style signal calls AI.
+  - Signal one agreed for the same reason it always does with plain, correct English (0.74–0.83).
+- **Why the safeguards didn't apply:** both signals were above 0.5, so the agreement rule, built for exactly this writer, never fired. All four combined scores (0.76–0.83) cleared my 0.70 line.
+- This is the blind spot I named in Milestone 1. The attack set found it in the cases where both signals share it.
+
+**Pattern C: no words, scored as "AI".** *(MF04, MF05, MF06, MF07: 4 broke; MF03 broke the other way)*
+- **Stage:** the route first, then signal two.
+- **The route:** it accepts any string with 3+ GPT-2 tokens. It never asks whether the input is language.
+- **Signal two:** `stylometry.words()` only matches `[a-z0-9']`. Emoji (MF06), Arabic (MF07) and punctuation-only text (MF04) produce **zero words**, and a 4,000-letter "aaaa…" (MF05) produces one.
+  - With no words, `punctuation_density` returns 0.0, which my mapping reads as fully AI (1.0). "Couldn't measure" turned into "AI".
+  - MF04 also slipped past my one-sentence guard: its four zero-word "sentences" counted as four sentences with a spread of 0, which reads as perfectly even, so AI.
+- **Signal one** finds repeated emoji and repeated letters extremely predictable (0.997), so MF05–07 combined to 0.77–0.81, "AI".
+- **MF03** (control characters) broke the other way: GPT-2 found the escape codes so surprising that the model score was 0.00, giving "human".
+- **The worst case is MF07:** anyone writing in Arabic, Chinese or any non-Latin script gets "AI" for a reason unrelated to how they write.
+
+**Two smaller ones in signal one.** *(EV01, EV08: 2 broke)*
+- **EV01**, typos: misspellings like "poistioned" and "thsi" split into rare sub-word pieces. That raised perplexity, so the model score fell to 0.16. Other lightly changed versions of the same paragraph (EV03, EV04, EV07) kept the model at 0.59–0.67.
+  - Style stayed AI-like (0.98), because my word-variety measure carries no weight, so typos couldn't move signal two at all.
+  - The 50/50 average (0.57) landed in "unsure". The combining rule let one fooled signal cancel one correct signal.
+- **EV08**, two sentences and 10 words: too little text for GPT-2 to find patterns in (model 0.25). My route only rejects texts under 3 tokens, so it was scored anyway and landed at 0.55, "unsure".
+
+**EV07** (punctuation padding) is Pattern C's mirror image. It swapped full stops for "; and, moreover,", so my splitter saw one 97-word sentence. Spread fell back to neutral (0.5), and punctuation density hit 0.22, which reads as fully human. Style dropped to 0.38. **Stage:** signal two's sentence splitter and punctuation measure.
+
+**Criterion 3, missed: my hand-edited AI paragraph got "ai" (0.72), not "unsure".**
+- **Stage:** both signals, then the label mapping.
+- **Mechanism:** my edits were word swaps ("essential" → "important", "Ultimately" → "Overall", "can" → "could") plus one deleted word. I re-scored the unedited original through the service:
+
+  | Version | model | style | combined | sentence lengths |
+  |---|---|---|---|---|
+  | AI original | 0.7897 | 0.6506 | 0.7201 | 13, 15, 9, 17 |
+  | My edit | 0.7827 | 0.6574 | 0.7200 | 13, 14, 9, 17 |
+
+- **Why the edit changed nothing:** swapping one common word for another leaves GPT-2's predictability, the sentence lengths and the commas exactly where they were. Neither signal can see a light edit, so the text kept the AI score it started with, and 0.72 is above my 0.70 line.
+- **What it means:** my criterion assumed "edited by hand" would read as borderline, but my signals only notice an edit that changes sentence shape. That's why EV05 (a heavy rewrite) went all the way to "human" while mine stayed "AI".
+- **Not a revision:** the criterion was measurable, and I got a clear verdict from it. It's a miss, not a broken criterion, so it stays as written.
+
+**The pattern across all of it:** signal two decides most outcomes, and its two main measures both fail the same way. It reads *sentence shape and punctuation*, which an attacker can change in seconds, which careful human writers naturally keep tidy, and which non-Latin scripts don't produce at all. Patterns A, B and C (17 of the 20 broken attacks, plus the criterion 3 miss) are one problem: signal two treats "even and unpunctuated" as AI and "uneven or punctuated" as human, regardless of what the words are.
+
+**Were my targets too easy?**
+- **Criteria 4 and 5** test plumbing: the appeal endpoint and input validation. They held 10/10 and 5/5 in every trial and were always likely to.
+- **Criterion 1 passed, but on writing that turned out to be safe.** My pieces were casual, cited or reflective, and none of them looked like FP02–FP05. The attack set's careful, formal and technical human writing was called AI 4 times out of 8. My plain Patti Smith paragraph only escaped at 0.69, because the agreement cap held it 0.01 under the line.
+- **The criterion I'd tighten is criterion 1:** require that 3 of the 10 pieces be formal or technical, my own report or instructions, not just "plain". That's where this service accuses real people.
+
+No criterion is revised: all five could be measured and gave a clear verdict.
+
 ---
 
 ## The Improvement
