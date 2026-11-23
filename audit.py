@@ -112,11 +112,22 @@ def log_rejection(creator_id: str, reason: str, **extra) -> dict:
     })
 
 
-def _append(entry: dict) -> dict:
+def log_request(entry: dict) -> dict:
+    """
+    One line per HTTP request in the request log. ← UNIT 9
+
+    Separate from the audit log on purpose: the audit log is the record of
+    decisions a writer could appeal; this is the operational record — how long
+    each request took, where the time went, what memory looked like.
+    """
+    return _append({"timestamp": _now(), **entry}, path=config.REQUEST_LOG)
+
+
+def _append(entry: dict, path=None) -> dict:
     config.LOG_DIR.mkdir(parents=True, exist_ok=True)
     line = json.dumps(entry, ensure_ascii=False)
     with _lock:
-        with config.AUDIT_LOG.open("a", encoding="utf-8") as f:
+        with (path or config.AUDIT_LOG).open("a", encoding="utf-8") as f:
             f.write(line + "\n")
     return entry
 

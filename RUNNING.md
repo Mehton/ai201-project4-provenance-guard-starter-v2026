@@ -105,6 +105,8 @@ position.**
 | `python run_attacks.py --set <folder>` | The attack set — **unit 8** |
 | `python run_attacks.py --flood 15` | Push past your rate limit and print the status codes — **unit 8** |
 | `python run_eval.py --label before` | Your five criteria, three trials — **unit 8** |
+| `python run_appeals.py --label before` | Criterion 4 (appeals) and the bad-input log check, three trials — **unit 8** |
+| `python serve.py` | **The run path.** The service on waitress, a real server, with a line per request in `logs/requests.jsonl` — **unit 9** |
 
 ---
 
@@ -231,6 +233,58 @@ answer for this project, not a fallback and not a failure. Working out that a
 system doesn't fit its host *before* you spend an evening watching it get
 killed is the skill unit 9 is actually testing. Write the arithmetic above in
 your write-up; that's the deliverable.
+
+### Path B: how this runs (unit 9)
+
+**The one command**, from the repo root with the virtual environment active:
+
+```bash
+python serve.py
+```
+
+It serves the same Flask app as `python app.py`, but on **waitress** instead of
+Flask's development server. Not gunicorn: gunicorn needs `fork()` and `fcntl`,
+so it can't start on Windows. waitress runs the same everywhere. It listens on
+`http://127.0.0.1:5000` by default; `HOST` and `PORT` from the table above
+change that. Stop it with Ctrl+C.
+
+**From a clean checkout to a running service:**
+
+```bash
+git clone https://github.com/Mehton/ai201-project4-provenance-guard-starter-v2026.git
+cd ai201-project4-provenance-guard-starter-v2026
+python -m venv .venv
+.venv\Scripts\activate            # macOS/Linux: source .venv/bin/activate
+pip install -r requirements.txt
+python detector.py                # downloads gpt2 once (~526 MB) and scores a sample
+python serve.py
+```
+
+Then, in a second terminal:
+
+```bash
+curl http://127.0.0.1:5000/health
+curl -X POST http://127.0.0.1:5000/submit -H "Content-Type: application/json" \
+  -d '{"text": "<at least 20 words of English>", "creator_id": "you"}'
+```
+
+**What it writes while it runs:**
+
+| File | One line per | Fields |
+|---|---|---|
+| `logs/audit.jsonl` | decision, appeal, or rejection | the nine audit fields from unit 8 (what was decided) |
+| `logs/requests.jsonl` | HTTP request, any route, any status | `timestamp`, `method`, `path`, `status`, `duration_ms`, `cpu_ms`, `stages_ms` (`validate`, `signal_one`, `signal_two`, `combine_and_label`, `audit_log`), `memory_mb`, `model_loaded_at_start`, `in` (bytes, creator_id, chars, words — never the text itself), `out` (content_id, guess, confidence, error, status) |
+
+**What the environment needs** (measured on the machine this was built on):
+
+| Need | Value |
+|---|---|
+| Python | 3.13.7 (3.11–3.13 supported; not 3.14) |
+| OS tested | Windows 11 |
+| Pinned dependencies | `requirements.txt`; installed versions: flask 3.1.3, flask-limiter 3.12, requests 2.34.2, transformers 4.57.6, torch 2.15.0 (CPU), waitress 3.0.2, psutil 7.2.2, certifi 2026.10.23 |
+| Model files | `gpt2`, downloaded to the Hugging Face cache (`~/.cache/huggingface/hub/models--gpt2`): **526 MB** on disk, of which `model.safetensors` is 548,105,171 bytes |
+| Memory while serving | about **900 MB** resident once the model is loaded (`memory_mb` in `logs/requests.jsonl`), against a 512 MB free tier |
+| Disk for logs | grows by about 0.37 KB per request (`requests.jsonl`) plus about 0.46 KB per decision (`audit.jsonl`), measured averages over the first 240 request lines |
 
 ---
 

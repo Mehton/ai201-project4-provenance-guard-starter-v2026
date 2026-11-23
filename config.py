@@ -138,4 +138,7 @@ RATE_LIMIT_STORAGE = "memory://"
 
 LOG_DIR = ROOT / "logs"
 AUDIT_LOG = LOG_DIR / "audit.jsonl"
+# UNIT 9: one line per HTTP request — timing, memory, outcome. The audit log
+# says what was decided; this says what it cost to decide it.
+REQUEST_LOG = LOG_DIR / "requests.jsonl"
 RESULTS_DIR = ROOT / "results"

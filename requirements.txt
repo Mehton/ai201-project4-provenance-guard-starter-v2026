@@ -22,6 +22,14 @@ torch>=2.2,<3.0
 # server prints "development server" at you because it means it.
 gunicorn>=21.2,<24.0
 
+# gunicorn needs fork() and fcntl, so it won't start on Windows. waitress is a
+# production WSGI server that runs on Windows, macOS and Linux — serve.py uses
+# it, so the same command works on every machine. UNIT 9.
+waitress>=3.0,<4.0
+
+# Reading this process's memory for the request log. UNIT 9.
+psutil>=5.9,<8.0
+
 # The CA bundle every HTTPS call above verifies against. It arrives as a
 # transitive dependency, so it is pinned forward here to stop a cached older
 # wheel from satisfying this file. Anything before 2026.10.19 still trusts the

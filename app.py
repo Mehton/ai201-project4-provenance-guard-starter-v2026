@@ -24,9 +24,13 @@ Routes:
     GET  /health      is the service up, and is the model loaded
 """
 
+import time
 import uuid
+from contextlib import contextmanager
 
-from flask import Flask, jsonify, request
+import psutil
+from flask import Flask, g, jsonify, request
+from werkzeug.exceptions import HTTPException
 
 import audit
 import config
@@ -35,6 +39,72 @@ import scoring
 import stylometry
 
 app = Flask(__name__)
+
+
+# ── Instrumentation — UNIT 9 ──────────────────────────────────────────────────
+# Every request, whatever its route or outcome, leaves one line in
+# logs/requests.jsonl: when, what came in, what went out, how long it took and
+# where the time went. The audit log says what was decided; this says what it
+# cost to decide it.
+
+_process = psutil.Process()
+
+
+def _start_clock():
+    g.t0 = time.perf_counter()
+    g.cpu0 = time.process_time()
+    g.stages = {}
+    g.input = {}
+    g.model_loaded_at_start = detector._model is not None
+
+
+# First in line, ahead of the rate limiter's own before_request — otherwise a
+# 429 would be answered before the clock ever started.
+app.before_request_funcs.setdefault(None, []).insert(0, _start_clock)
+
+
+@contextmanager
+def _stage(name):
+    """Time one stage of a request, in milliseconds, into g.stages."""
+    started = time.perf_counter()
+    try:
+        yield
+    finally:
+        g.stages[name] = round((time.perf_counter() - started) * 1000, 2)
+
+
+@app.after_request
+def _record_request(response):
+    if "t0" not in g:  # a request that never reached _start_clock
+        return response
+    body = response.get_json(silent=True) if response.is_json else None
+    body = body if isinstance(body, dict) else {}
+    audit.log_request({
+        "method": request.method,
+        "path": request.path,
+        "status": response.status_code,
+        "duration_ms": round((time.perf_counter() - g.t0) * 1000, 2),
+        # Process-wide CPU time. Exact for one request at a time; overlapping
+        # requests on other threads get counted too.
+        "cpu_ms": round((time.process_time() - g.cpu0) * 1000, 2),
+        "stages_ms": g.stages,
+        "memory_mb": round(_process.memory_info().rss / 2**20, 1),
+        "model_loaded_at_start": g.model_loaded_at_start,
+        "in": {"bytes": request.content_length or 0, **g.input},
+        "out": {k: body[k] for k in ("content_id", "guess", "confidence", "error", "status")
+                if k in body},
+    })
+    return response
+
+
+@app.errorhandler(Exception)
+def _unhandled(exc):
+    """A crash still answers in JSON — and so still lands in the request log."""
+    if isinstance(exc, HTTPException):
+        return exc
+    app.logger.exception("unhandled error")
+    return jsonify({"error": "internal_error",
+                    "message": "Something went wrong on our side."}), 500
 
 
 # ── Rate limiting — UNIT 8 ────────────────────────────────────────────────────
@@ -223,6 +293,8 @@ def submit():
                        f"text is longer than {config.MAX_TEXT_CHARS:,} characters.",
                        length=len(text))
     word_count = len(stylometry.words(text))
+    g.input = {"creator_id": creator_id, "chars": len(text), "words": word_count}
+    g.stages["validate"] = round((time.perf_counter() - g.t0) * 1000, 2)
     if word_count < config.MIN_WORDS:
         return _reject(creator_id, "not_enough_words",
                        f"We need at least {config.MIN_WORDS} words of English text to "
@@ -230,7 +302,8 @@ def submit():
                        words=word_count)
 
     try:
-        model_score = detector.model_signal(text)
+        with _stage("signal_one"):
+            model_score = detector.model_signal(text)
     except ValueError:
         return _reject(creator_id, "text_too_short",
                        "text is too short to score. Send a few sentences at least.")
@@ -238,24 +311,27 @@ def submit():
         return _reject(creator_id, "detector_unavailable",
                        "The detector model isn't available right now.", status=503)
 
-    style_score = stylometry.style_signal(text)
-    confidence = scoring.combine_signals(model_score, style_score)
-
-    guess, label = scoring.score_to_label(confidence)
+    with _stage("signal_two"):
+        style_score = stylometry.style_signal(text)
+        style_parts = stylometry.style_parts(text)
+    with _stage("combine_and_label"):
+        confidence = scoring.combine_signals(model_score, style_score)
+        guess, label = scoring.score_to_label(confidence)
 
     content_id = str(uuid.uuid4())
-    audit.log_decision(
-        content_id=content_id,
-        creator_id=creator_id,
-        guess=guess,
-        model_score=model_score,
-        style_score=style_score,
-        combined_score=confidence,
-        label=label,
-        # Each style measure as 0–1 AI-likeness, so a surprising style_score
-        # can be traced to the measure that caused it.
-        style_parts=stylometry.style_parts(text),
-    )
+    with _stage("audit_log"):
+        audit.log_decision(
+            content_id=content_id,
+            creator_id=creator_id,
+            guess=guess,
+            model_score=model_score,
+            style_score=style_score,
+            combined_score=confidence,
+            label=label,
+            # Each style measure as 0–1 AI-likeness, so a surprising style_score
+            # can be traced to the measure that caused it.
+            style_parts=style_parts,
+        )
 
     return jsonify({
         "content_id": content_id,
