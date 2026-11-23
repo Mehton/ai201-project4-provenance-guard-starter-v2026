@@ -930,18 +930,85 @@ No criterion is revised: all five could be measured and gave a clear verdict.
 
 ## The Improvement
 
-**What I changed:**
+**What I changed:** One check in the route (`app.py::submit`), before either signal runs. Text with fewer than **20 countable words** is rejected with a 400 `not_enough_words` and logged as a rejection. "Countable" means what `stylometry.words()` counts: Latin letters and digits. The number is `MIN_WORDS = 20` in `config.py`. Nothing else changed: same weights, same thresholds, same signals.
 
-**Which diagnosis pointed at it:**
+**Which diagnosis pointed at it:** Pattern C, "no words, scored as AI". Emoji, Arabic script, punctuation-only text and one 4,000-letter "word" all reached my signals, and signal two read "nothing to measure" as fully AI-like. Rather than patch how signal two scores empty input, I stopped empty input from reaching the signals at all.
+
+**Why this one and not another:** before changing anything, I replayed the recorded "before" scores through each candidate fix. Every signal score is fixed for a given text, so the replay is exact:
+
+| Candidate | Broken attacks (was 20) | Side effect |
+|---|---|---|
+| **Validate input, ≥ 20 words** | **14** | none new |
+| Move the AI line from 0.70 to 0.80 | 19 | EV04 newly broke; most AI text drops to "unsure" |
+| Reweight to 70/30 or 30/70 | 20 | none: both signals fail on the same inputs, so weighting can't separate them |
 
 ### Attack Run — After
 
 <!-- Same format. `run_attacks.py --label after` -->
 
+`python run_attacks.py --set attack_set --label after`, with all 56 attacks, gives **42 held and 14 broke** (before: 36 held, 20 broke). Full output: `results/attack_run_2026-11-22_2225_after.md`.
+
+| Family | Before: held / broke | After: held / broke |
+|---|---|---|
+| evasion | 2 / **8** | 3 / **7** |
+| false_positive | 4 / **4** | 4 / **4** |
+| prompt_injection | 3 / **3** | 3 / **3** |
+| malformed | 15 / **5** | 20 / **0** |
+| flood_same_creator | 12 / 0 | 12 / 0 |
+| **Total** | **36 / 20** | **42 / 14** |
+
+Every attack whose outcome changed:
+
+| ID | Going for | Before | After |
+|---|---|---|---|
+| EV08 | AI text below the token window (10 words) | 200 unsure 0.545, **BROKE** | 400 `not_enough_words`, held |
+| MF03 | control characters | 200 human 0.188, **BROKE** | 400 `not_enough_words`, held |
+| MF04 | punctuation only | 200 unsure 0.506, **BROKE** | 400 `not_enough_words`, held |
+| MF05 | one 4,000-letter word | 200 **ai** 0.811, **BROKE** | 400 `not_enough_words`, held |
+| MF06 | emoji only | 200 **ai** 0.811, **BROKE** | 400 `not_enough_words`, held |
+| MF07 | Arabic script | 200 **ai** 0.766, **BROKE** | 400 `not_enough_words`, held |
+| FP08 | very short genuine human text (8 words) | 200 unsure 0.443, held | 400 `not_enough_words`, held |
+| FL01_01–05 | flood: first 5 of 12 (a 9-word text) | 200 human 0.327, held | 400 `not_enough_words`, held |
+
+The other 44 attacks returned exactly the same status, guess and score as before (checked row by row).
+
+The Arabic text, before and after, as the audit log recorded it:
+
+```json
+{"timestamp": "2026-11-23T05:09:35+00:00", "content_id": "bce2d1d6-960f-4618-9361-0b65ba7061b4", "creator_id": "attacker_MF07", "guess": "ai", "model_score": 0.9064, "style_score": 0.625, "combined_score": 0.7657, "label": "This writing closely matches patterns we often see in AI-generated text. …", "status": "decided", "style_parts": {"spread": 0.5, "punctuation": 1.0, "ttr": 1.0}}
+{"timestamp": "2026-11-23T06:25:27+00:00", "creator_id": "attacker_MF07", "event": "rejected", "status": "rejected", "reason": "not_enough_words", "words": 0}
+```
+
+**My five criteria, after** (`python run_eval.py --label after` and `python run_appeals.py --label after`, three trials each; `results/run_2026-11-22_2225_after.md`, `results/appeals_2026-11-22_2225_after.md`):
+
+| Criterion | Target | Before (runs 1, 2, 3) | After (runs 1, 2, 3) | Verdict after |
+|---|---|---|---|---|
+| 1. My own writing rarely called AI, plain never | ≤ 1 of 10, 0 of 3 plain | 0/10, 0/10, 0/10 | 0/10, 0/10, 0/10 | **MET** |
+| 2. Clearly-AI and clearly-human text score far apart | median gap ≥ 0.30 | 0.43, 0.43, 0.43 | 0.43, 0.43, 0.43 | **MET** |
+| 3. All three labels reachable | 3 of 3 intended | 2/3, 2/3, 2/3 | 2/3, 2/3, 2/3 | **MISSED** |
+| 4. Every appeal recorded, moves to review | 10/10 + 404 | 10/10 + 404 ×3 | 10/10 + 404 ×3 | **MET** |
+| 5. Bad input rejected clearly | 5 of 5 | 5/5 ×3 | 5/5 ×3 | **MET** |
+
+All 84 scored responses in the criteria run are identical to the "before" run, to four decimal places. My shortest real test text is 29 words, so the new check never touched them.
+
 **Did it help, and how do I know:**
 
 <!-- Widening the unsure band usually fixes one problem and creates another.
      Reporting that trade honestly is worth full credit. -->
+
+**Yes, for the problem it targeted, and only that one.**
+- **What it fixed:** broken attacks went from 20 to 14. All five "no words, scored as AI" cases and the too-short evasion are now refused instead of judged. The malformed family went from 5 broke to 0. Nobody writing in Arabic or Chinese gets told their work "closely matches patterns we often see in AI-generated text" any more.
+- **How I know:** the before and after runs are the same 56 inputs, and the 44 rows unrelated to the change came back identical. My criteria are unchanged in all three trials, so the fix didn't quietly break anything I was measuring.
+
+**What it didn't fix:**
+- **The 4 false positives** (FP02–05) and the worst outcome (FP03) are exactly where they were. Those writers produce plenty of words; my signals just misread them (Pattern B).
+- **The 8 short-sentence evasions** (Pattern A) are unaffected too.
+- **Criterion 3** is still missed.
+
+**What it cost:**
+1. **Genuine short writing can't be checked.** FP08, "Went for a run. Legs hurt. Worth it.", used to get "unsure". Now it gets a 400 saying we need 20 words. That isn't an accusation (the message says "Nothing was flagged"), but a real writer with a short piece gets no reading at all.
+2. **Writers in other languages get "not enough words" instead of a verdict.** That's better than being called AI, but it's still a refusal. The honest message would be "we only check English text".
+3. **The flood rows changed status:** the first 5 now get 400 instead of 200, because their text is 9 words. The rate limiter still cut in at the 6th request, so the flood protection is unchanged. Only the reason the first 5 were turned away is different.
 
 ---
 

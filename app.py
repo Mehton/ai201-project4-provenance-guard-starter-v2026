@@ -222,6 +222,12 @@ def submit():
         return _reject(creator_id, "text_too_long",
                        f"text is longer than {config.MAX_TEXT_CHARS:,} characters.",
                        length=len(text))
+    word_count = len(stylometry.words(text))
+    if word_count < config.MIN_WORDS:
+        return _reject(creator_id, "not_enough_words",
+                       f"We need at least {config.MIN_WORDS} words of English text to "
+                       f"give a reading, and this has {word_count}. Nothing was flagged.",
+                       words=word_count)
 
     try:
         model_score = detector.model_signal(text)

@@ -51,6 +51,14 @@ DETECTOR_MAX_TOKENS = 400
 # needs "enormous" to be a number, and this is it.
 MAX_TEXT_CHARS = 10_000
 
+# Unit 8 improvement: fewer countable words than this is rejected with a 400
+# before either signal sees it. "Countable" means what stylometry.words()
+# counts: Latin letters and digits. Emoji, other scripts, control characters,
+# punctuation-only text and one giant "word" all fall under it — the attack
+# run showed my signals scoring "nothing to measure" as AI. My shortest real
+# test text is 29 words, so 20 leaves room for genuine short writing.
+MIN_WORDS = 20
+
 
 # ─── Scoring (Milestone 4)───────────────────────────────────────────────────
 # How much each signal counts toward the combined score.
